@@ -13,8 +13,9 @@ MIN_CONFIDENCE = 0.3      # EasyOCR confidence is 0-1
 LINE_Y_TOLERANCE = 15     # Boxes whose tops are within this many pixels are on the same line
 SHEET_FILE = "extracted_labels.csv"
 
+DORM_NAME = "Lee-Such Tower, Honors North"   # Predetermined; written to every row, not read from the label
+
 STREET_SUFFIX = r'\b(St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Hwy)\b'
-DORM_WORDS = r'\b(Hall|Residence|Residences|Dorm|Dormitory|House|Tower|Towers|Village|Apartments|Suites|Commons)\b'
 ROOM_PATTERN = re.compile(r'\b(?:room|rm|apt|suite|ste)\.?\s*#?\s*([A-Za-z0-9-]+)', re.IGNORECASE)
 
 
@@ -37,10 +38,10 @@ def group_into_lines(results):
 
     return [" ".join(t for _, t in sorted(line['parts'])) for line in lines]
 
-# This is the important code - this extracts the text.
+
 def extract_fields(lines):
-    """Pull name, address, dorm, and room number out of the lines of text."""
-    fields = {'name': None, 'address': None, 'dorm': None, 'room': None}
+    """Pull name, address, and room number from the label. Dorm is predetermined."""
+    fields = {'name': None, 'address': None, 'room': None}
 
     for i, line in enumerate(lines):
         if re.search(r'ship\s*to', line, re.IGNORECASE) and i + 1 < len(lines):
@@ -59,11 +60,6 @@ def extract_fields(lines):
             break
 
     for line in lines:
-        if re.search(DORM_WORDS, line, re.IGNORECASE):
-            fields['dorm'] = line
-            break
-
-    for line in lines:
         match = ROOM_PATTERN.search(line)
         if match:
             fields['room'] = match.group(1)
@@ -73,7 +69,7 @@ def extract_fields(lines):
 
 
 def save_to_sheet(fields):
-    """Append one row of extracted fields to the CSV file."""
+    """Append one row to the CSV. Dorm is always the predetermined value."""
     is_new = not os.path.exists(SHEET_FILE)
     with open(SHEET_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
@@ -81,7 +77,7 @@ def save_to_sheet(fields):
             writer.writerow(["timestamp", "name", "address", "dorm", "room"])
         writer.writerow([datetime.now().isoformat(timespec="seconds"),
                          fields['name'] or "", fields['address'] or "",
-                         fields['dorm'] or "", fields['room'] or ""])
+                         DORM_NAME, fields['room'] or ""])
 
 
 reader = easyocr.Reader(['en'], gpu=False)
@@ -94,7 +90,7 @@ print("Press 'e' to extract and save to CSV, 'q' to quit.")
 
 frame_count = 0
 last_results = []
-last_fields = {'name': None, 'address': None, 'dorm': None, 'room': None}
+last_fields = {'name': None, 'address': None, 'room': None}
 
 while True:
     ret, frame = cap.read()
@@ -122,9 +118,13 @@ while True:
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     y_pos = 70
-    for label in ['name', 'address', 'dorm', 'room']:
-        value = last_fields[label] or "--"
-        cv2.putText(panel, label.capitalize() + ":", (10, y_pos),
+    rows = [('Name', last_fields['name']),
+            ('Address', last_fields['address']),
+            ('Dorm', DORM_NAME),
+            ('Room', last_fields['room'])]
+    for label, value in rows:
+        value = value or "--"
+        cv2.putText(panel, label + ":", (10, y_pos),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 255), 1)
         y_pos += 22
         for i in range(0, len(value), 36):
@@ -140,12 +140,12 @@ while True:
     cv2.imshow("Webcam OCR - Press 'e' to Extract, 'q' to Quit", combined)
 
     key = cv2.waitKey(1) & 0xFF
-    if key == ord('q'): 
+    if key == ord('q'):
         break
     if key == ord('e'):
-        if any(last_fields.values()):
+        if last_fields['name'] or last_fields['address'] or last_fields['room']:
             save_to_sheet(last_fields)
-            print("Saved:", last_fields)
+            print("Saved:", last_fields, "Dorm:", DORM_NAME)
         else:
             print("Nothing extracted to save.")
 
