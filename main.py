@@ -1,7 +1,9 @@
 import csv
 import os
 import re
+import smtplib
 from datetime import datetime
+from email.message import EmailMessage
 
 import cv2
 import numpy as np
@@ -15,9 +17,13 @@ SHEET_FILE = "extracted_labels.csv"
 
 DORM_NAME = "Lee-Such Tower, Honors North"   # Predetermined; written to every row, not read from the label
 
+# Email settings (read from environment variables, not stored in the file)
+GMAIL_ADDRESS = os.environ.get("Chrispy1729@gmail.com")
+GMAIL_APP_PASSWORD = os.environ.get("Gmail@1729")
+EMAIL_TO = os.environ.get("Chrispy1729@gmail.com")
+
 STREET_SUFFIX = r'\b(St|Street|Ave|Avenue|Rd|Road|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Hwy)\b'
 ROOM_PATTERN = re.compile(r'\b(?:room|rm|apt|suite|ste)\.?\s*#?\s*([A-Za-z0-9-]+)', re.IGNORECASE)
-
 
 def group_into_lines(results):
     """Turn EasyOCR boxes into ordered lines of text, top to bottom, left to right."""
@@ -80,13 +86,36 @@ def save_to_sheet(fields):
                          DORM_NAME, fields['room'] or ""])
 
 
+def send_email(fields):
+    """Email the extracted fields using Gmail SMTP."""
+    if not (GMAIL_ADDRESS and GMAIL_APP_PASSWORD and EMAIL_TO):
+        raise RuntimeError("Email environment variables are not set")
+
+    body = "\n".join(f"{label}: {value or '--'}" for label, value in [
+        ("Name", fields['name']),
+        ("Address", fields['address']),
+        ("Dorm", DORM_NAME),
+        ("Room", fields['room']),
+    ])
+
+    msg = EmailMessage()
+    msg["Subject"] = "Package label extracted"
+    msg["From"] = GMAIL_ADDRESS
+    msg["To"] = EMAIL_TO
+    msg.set_content(body)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as server:
+        server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+        server.send_message(msg)
+
+
 reader = easyocr.Reader(['en'], gpu=False)
 
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     raise IOError("Cannot open webcam")
 
-print("Press 'e' to extract and save to CSV, 'q' to quit.")
+print("Press 'e' to extract, save to CSV, and email. 'q' to quit.")
 
 frame_count = 0
 last_results = []
@@ -146,8 +175,15 @@ while True:
         if last_fields['name'] or last_fields['address'] or last_fields['room']:
             save_to_sheet(last_fields)
             print("Saved:", last_fields, "Dorm:", DORM_NAME)
+            try:
+                send_email(last_fields)
+                print("Email sent to", EMAIL_TO)
+            except (smtplib.SMTPException, OSError, RuntimeError) as e:
+                print("Saved, but email failed:", e)
         else:
             print("Nothing extracted to save.")
 
 cap.release()
 cv2.destroyAllWindows()
+
+password = 'copg zfhp xgtc tfig'
