@@ -18,7 +18,7 @@ RESIDENT_FILE = "residents.csv"
 
 DORM_NAME = "Lee-Such Tower, Honors North" 
 
-GMAIL_ADDRESS = os.environ.get("GMAIL_ADDRESS")
+GMAIL_ADDRESS = "team14.emailer@gmail.com"
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 
 SUBJECT = "Package Delivered"
